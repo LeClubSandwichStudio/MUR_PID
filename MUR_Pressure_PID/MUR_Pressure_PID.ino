@@ -104,7 +104,7 @@ float differentialP = 0.;
 float sensorTare = 0.;
 
 // pressure sensor sample Frequency = 20ms runs smooth on teensy3.2
-unsigned long pressureSample = 10;
+unsigned long pressureSample = 20;
 
 //PID parameters
 double kp = 0 , ki = 0 , kd = 0 ;
@@ -249,29 +249,30 @@ void integrateTare() {
     sensorTare = (0.5 * differentialP + ((1 - 0.5) * sensorTare));
   }
 }
-// interruption that occurs every 20ms 
+// interruption that occurs every 20ms
 void updateData() {
   updateSensors(); // Reads measured values
   readPot();       // Reads the configuration of the potentiometers
-  
+
   if (inspiration) {// if the lung is in inspiration phase
-    init_PIDParameters(1, 0.021 , 0);
-    // PIDs command is efficient for every setPoint in a specific servo opening angle range 
+    init_PIDParameters(1, 0.001 , 0);
+    // PIDs command is efficient for every setPoint in a specific servo opening angle range
     //
-    ovPos = computePID(differentialP, plateauPos  , 0, 31-error );   //31 is the best max angle to reach max inspiration pressure 
-                                                                     // -error allow us to regulate de range of the PID command using a simple proportional  
-    outputValve.write(31-error - ovPos);
-    inputValve.write( ovPos+error);
-    airSourceInputValve.write(31-error - ovPos*1);
+    ovPos = computePID(differentialP, plateauPos  , 0, (31 - error) ); //31 is the best max angle to reach maximum inspiration pressure
+    // -error allow us to regulate de range of the PID command using a simple proportional
+    outputValve.write((31 - error) - ovPos);
+    inputValve.write( ovPos + (error));
+    airSourceInputValve.write((31 - error) - ovPos);
 
   }
   else if (expiration) {// if the lung is in expiration phase
     init_PIDParameters(1, 0.21 , 0);
-    ovPos = computePID(differentialP, baselinePos   , 0, 44 -error);  
-    outputValve.write((44-error)- ovPos); 
-    inputValve.write(error+ovPos);
-    airSourceInputValve.write((44-error)- ovPos);
-    
+    ovPos = computePID(differentialP, baselinePos   , 0, (44 - error));  //44 is the best max angle to reach minimum inspiration pressure
+    // -error allow us to regulate de range of the PID command using a simple proportional
+    outputValve.write((44 - error) - ovPos);
+    inputValve.write(error + ovPos);
+    airSourceInputValve.write((44 - error) - ovPos);
+
   }
 
 }
@@ -306,9 +307,9 @@ void setup() {
   pinMode(PressureCal, INPUT_PULLUP);
   pinMode(Buzzer, OUTPUT);
   digitalWrite(Buzzer, LOW);
+
   Serial.begin(115200);
-  //while(!Serial) delay(100);
-  delay(1000);
+  delay(100);
   Wire.begin();
   Wire.setClock(400000);
   initBME();
@@ -316,15 +317,15 @@ void setup() {
   inputValve.attach(InputValvePin);
   outputValve.attach(OutputValvePin);
   airSourceInputValve.attach(AirSourceInputValvePin);
-  //inputValve.write(ivPos);
   startupTare();
-  //  myPID.SetMode(AUTOMATIC);
+
   // initialisation interruption Timer 1
   Timer1.initialize(pressureSample * 1000); //20ms         // initialize timer1, and set a 1/2 second period
   Timer1.attachInterrupt(updateData);
+  //init servos to release all the pressure
   inputValve.write(90);
   outputValve.write(0);
-  //
+  airSourceInputValve.write(0);
 
 
 
@@ -333,18 +334,18 @@ void setup() {
 
 void loop() {
   int time_ = millis();
-  while (millis() - time_ <= cycle * (1 - ratio)) {
+  while (millis() - time_ <= cycle * (1 - ratio)) {// loop that maintain inspiration time in cycle
     expiration = false;
     inspiration = true;
   }
-    I=0;D=0;
+  D=0;I = 0; // integral reinistialization so it doesnt affect the expiration PID
   time_ = millis();
-  while (millis() - time_ <= cycle * (  ratio)) {
+  while (millis() - time_ <= cycle * (  ratio)) {// loop that maintain expiration time in cycle
     expiration = true;
     inspiration = false;
 
   }
-  I=0;D=0;
+  D=0; I = 0; // integral reinistialization so it doesnt affect the inspitation PID
 
 
 
