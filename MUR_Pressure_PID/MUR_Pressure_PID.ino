@@ -256,19 +256,22 @@ void updateData() {
 
   if (inspiration) {// if the lung is in inspiration phase
     init_PIDParameters(1, 0.001 , 0);
+    
     // PIDs command is efficient for every setPoint in a specific servo opening angle range
-    //
     ovPos = computePID(differentialP, plateauPos  , 0, (31 - error) ); //31 is the best max angle to reach maximum inspiration pressure
-    // -error allow us to regulate de range of the PID command using a simple proportional
+                                                                        // -error allow us to regulate de range of the PID command using a simple proportional
     outputValve.write((31 - error) - ovPos);
     inputValve.write( ovPos + (error));
     airSourceInputValve.write((31 - error) - ovPos);
 
   }
   else if (expiration) {// if the lung is in expiration phase
+    
     init_PIDParameters(1, 0.21 , 0);
+    
+    // PIDs command is efficient for every setPoint in a specific servo opening angle range
     ovPos = computePID(differentialP, baselinePos   , 0, (44 - error));  //44 is the best max angle to reach minimum inspiration pressure
-    // -error allow us to regulate de range of the PID command using a simple proportional
+                                                                          // -error allow us to regulate de range of the PID command using a simple proportional
     outputValve.write((44 - error) - ovPos);
     inputValve.write(error + ovPos);
     airSourceInputValve.write((44 - error) - ovPos);
@@ -285,17 +288,26 @@ void init_PIDParameters(double kprop, double kint , double kdiff) {
 double computePID(double input_, double setPoint, double outMin, double outMax) {
   double output_ = 0 ;
   currentTime = millis();
+  
   timeInterval = (double)(currentTime - previousTime);        //time interval
 
   error = setPoint - input_;                                  // compute proportional
+  
   I += error * timeInterval;                                  // compute integral
+  
   if (I >= outMax ) I = outMax;                               // condition to limitate the integrals output
   else if (I <= outMin) I = outMin;
+ 
   D = (error - lastError) / timeInterval;                     // compute derivative
+ 
   output_ = (kp * error + ki * I + kd * D);                   //PID output
+  
   lastError = error;                                          //remember current error
+ 
   previousTime = currentTime;                                 //remember current time
+  
   output_ = map(output_ , -100, 100 , outMin, outMax );
+  
   return output_;                                             //have function return the PID output
 }
 
@@ -317,20 +329,19 @@ void setup() {
   inputValve.attach(InputValvePin);
   outputValve.attach(OutputValvePin);
   airSourceInputValve.attach(AirSourceInputValvePin);
+  
   startupTare();
 
   // initialisation interruption Timer 1
   Timer1.initialize(pressureSample * 1000); //20ms         // initialize timer1, and set a 1/2 second period
   Timer1.attachInterrupt(updateData);
+  
   //init servos to release all the pressure
   inputValve.write(90);
   outputValve.write(0);
   airSourceInputValve.write(0);
 
-
-
 }
-
 
 void loop() {
   int time_ = millis();
