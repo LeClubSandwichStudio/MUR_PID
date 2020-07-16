@@ -1,12 +1,9 @@
 /***************************************************************************
   Copyright 2020 LE CLUB SANDWICH STUDIO SAS
-
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
   You may obtain a copy of the License at
-
   http://www.apache.org/licenses/LICENSE-2.0
-
   Unless required by applicable law or agreed to in writing, software
   distributed under the License is distributed on an "AS IS" BASIS,
   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,7 +16,6 @@
   ALARMS ARE NOT JET WORKING PROPERLY DUE TO TWO REASONS :
   - BME280 library is blocking the loop if the sensor fails
   - I didn't untangle all the program flow...
-
   BUT :
   It beeps when you exceed peakAlarmLevel and plateauAlarmlevel
   This provides a minimum of over pressure protection...
@@ -44,7 +40,7 @@ BME280 bmeAmbient;
 #define OutputValvePin  3            // Pin for Output Valve
 #define AirSourceInputValvePin  4    // Pin for Output Valve
 
-#define Led   5            // future neopixel Led for user feedback
+#define   LED 5            // future neopixel Led for user feedback
 #define Buzzer   6         // Alarm Buzzer
 #define Maintenance   7    // Sets all valves to 0° for maintenance
 #define PressureCal   8    // Closes outputValve and opens Input Valve for maximum pressure calibration
@@ -79,7 +75,7 @@ unsigned long cycleZero = 0;
 unsigned long bmpZero = 0;
 
 //running cycle flags
-bool peak = false;
+//bool peak = false;
 bool inspiration = false;
 bool expiration = false;
 bool pressureMaxCal = false;
@@ -114,12 +110,12 @@ double lastError = 0;
 //time conting variables
 unsigned long currentTime = 0, previousTime = 0;
 double timeInterval = 0;  // currentTime-previousTime
-
+int peak = 0 ;
 
 void readPot() {
   // Read peaks potentiometer value //////NOT USED IN THIS CODE//////
   int tempI = analogRead(Peak);
-  peak = map(tempI, 0, 1023, 0, 70);
+  peak = map(tempI, 0, 1023, 20, 50);
 
   // Calculate total breath cycle length
   cycle = map(analogRead(Cycles), 0, 1023, 6000, 2000);
@@ -214,6 +210,8 @@ void updateSensors() {
   Serial.print("Inspiratory: "); Serial.print(plateauPos); Serial.print("  ");
   Serial.print("Expiratory: "); Serial.print(baselinePos); Serial.print("  ");
   Serial.print("differentialP "); Serial.print(differentialP); Serial.print("  ");
+    Serial.print("peak "); Serial.print(peak); Serial.print("  ");
+
   Serial.println();
 }
 
@@ -255,26 +253,23 @@ void updateData() {
   readPot();       // Reads the configuration of the potentiometers
 
   if (inspiration) {// if the lung is in inspiration phase
-    init_PIDParameters(1, 0.001 , 0);
-    
+    init_PIDParameters(3, 0.001 , 0);
     // PIDs command is efficient for every setPoint in a specific servo opening angle range
-    ovPos = computePID(differentialP, plateauPos  , 0, (31 - error) ); //31 is the best max angle to reach maximum inspiration pressure
-                                                                        // -error allow us to regulate de range of the PID command using a simple proportional
-    outputValve.write((31 - error) - ovPos);
+    //
+    ovPos = computePID(differentialP, plateauPos  , 0, (27 - error) ); //31 is the best max angle to reach maximum inspiration pressure
+    // -error allow us to regulate de range of the PID command using a simple proportional
+    outputValve.write((27 - error) - ovPos);
     inputValve.write( ovPos + (error));
-    airSourceInputValve.write((31 - error) - ovPos);
+    airSourceInputValve.write((27 - error) - ovPos);
 
   }
   else if (expiration) {// if the lung is in expiration phase
-    
-    init_PIDParameters(1, 0.21 , 0);
-    
-    // PIDs command is efficient for every setPoint in a specific servo opening angle range
-    ovPos = computePID(differentialP, baselinePos   , 0, (44 - error));  //44 is the best max angle to reach minimum inspiration pressure
-                                                                          // -error allow us to regulate de range of the PID command using a simple proportional
-    outputValve.write((44 - error) - ovPos);
+    init_PIDParameters(2, 0.21 , 0);
+    ovPos = computePID(differentialP, baselinePos   , 0, (38 - error));  //44 is the best max angle to reach minimum inspiration pressure
+    // -error allow us to regulate de range of the PID command using a simple proportional
+    outputValve.write((38 - error) - ovPos);
     inputValve.write(error + ovPos);
-    airSourceInputValve.write((44 - error) - ovPos);
+    airSourceInputValve.write((38 - error) - ovPos);
 
   }
 
@@ -288,26 +283,17 @@ void init_PIDParameters(double kprop, double kint , double kdiff) {
 double computePID(double input_, double setPoint, double outMin, double outMax) {
   double output_ = 0 ;
   currentTime = millis();
-  
   timeInterval = (double)(currentTime - previousTime);        //time interval
 
   error = setPoint - input_;                                  // compute proportional
-  
   I += error * timeInterval;                                  // compute integral
-  
   if (I >= outMax ) I = outMax;                               // condition to limitate the integrals output
   else if (I <= outMin) I = outMin;
- 
   D = (error - lastError) / timeInterval;                     // compute derivative
- 
   output_ = (kp * error + ki * I + kd * D);                   //PID output
-  
   lastError = error;                                          //remember current error
- 
   previousTime = currentTime;                                 //remember current time
-  
   output_ = map(output_ , -100, 100 , outMin, outMax );
-  
   return output_;                                             //have function return the PID output
 }
 
@@ -329,19 +315,20 @@ void setup() {
   inputValve.attach(InputValvePin);
   outputValve.attach(OutputValvePin);
   airSourceInputValve.attach(AirSourceInputValvePin);
-  
   startupTare();
 
   // initialisation interruption Timer 1
   Timer1.initialize(pressureSample * 1000); //20ms         // initialize timer1, and set a 1/2 second period
   Timer1.attachInterrupt(updateData);
-  
   //init servos to release all the pressure
   inputValve.write(90);
   outputValve.write(0);
   airSourceInputValve.write(0);
 
+
+
 }
+
 
 void loop() {
   int time_ = millis();
