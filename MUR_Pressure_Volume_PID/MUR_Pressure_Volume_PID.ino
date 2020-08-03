@@ -20,12 +20,19 @@
   It beeps when you exceed peakAlarmLevel and plateauAlarmlevel
   This provides a minimum of over pressure protection...
 ***************************************************************************/
+/**********************   CODE  *******************************************
+ *    In this code a function reading air flow (in L/min ) and 
+ *    a function measuring the volume (in L) are integrated 
+ *    they use the Mass air flow sensor
+ *    Note about MAF reading : we read and average value to smooth the output  
+ **************************************************************************/
+
 
 #include <Servo.h>
 #include <Wire.h>
 #include <TimerOne.h>      // Inclusion de la librairie Timer2
 #include "SparkFunBME280.h"
-
+#include "math.h"
 //pressure control servos
 Servo inputValve;
 Servo outputValve;
@@ -51,6 +58,8 @@ BME280 bmeAmbient;
 #define Inspiratory   A7
 #define Expiratory   A8
 #define Peak  A6
+#define MAF  A3
+
 
 
 //  Please adapt these three values to your Servos and Airsource. We use Futaba S3003 Servos.
@@ -88,8 +97,9 @@ int ovPos = 90;
 int pvPos = 0;
 
 // position read on potentiometers
-int plateauPos = 0;
-int baselinePos = 0;
+double peak = 0 ;
+double plateauPos = 0;
+double baselinePos = 0;
 double cycle = 0;
 double ratio = 0 ;
 
@@ -97,8 +107,10 @@ double ratio = 0 ;
 float bmeP = 0.;
 float bmeA = 0.;
 float differentialP = 0.;
+float flowMeasure = 0.; //L/min
+float volumeMeasure = 0.;
 float sensorTare = 0.;
-
+float airSpeed = 0. ;
 // pressure sensor sample Frequency = 20ms runs smooth on teensy3.2
 unsigned long pressureSample = 20;
 
@@ -107,16 +119,27 @@ double kp = 0 , ki = 0 , kd = 0 ;
 double error = 0, I = 0, D = 0;
 double lastError = 0;
 
-//time conting variables
+//time counting variables
 unsigned long currentTime = 0, previousTime = 0;
 double timeInterval = 0;  // currentTime-previousTime
-int peak = 0 ;
+unsigned long currentTimeVol = 0, previousTimeVol = 0;
+double timeIntervalVol = 0;  // currentTime-previousTime
+/// Mean function's variables
+float measureVoltMAF = 0;
+const int numreadingsMAF = 5;
+int readingsMAF[numreadingsMAF];      // the readingsMAF from the analog input
+int readIndexMAF = 0;              // the index of the current reading
+int totalMAF = 0;           // the running totalMAF
+int averageMAF = 0;                // the averageMAF
 
+
+int pos = 0;
+
+int inputPinMAF = A0;
 void readPot() {
   // Read peaks potentiometer value //////NOT USED IN THIS CODE//////
   int tempI = analogRead(Peak);
   peak = map(tempI, 0, 1023, 20, 50);
-
   // Calculate total breath cycle length
   cycle = map(analogRead(Cycles), 0, 1023, 6000, 2000);
   // Calculate the time of the inspiration cycle including peak + inspiratory
@@ -127,7 +150,7 @@ void readPot() {
   // set inspiratory pressure, can only be opend until a certain point
   plateauPos = map(analogRead(Inspiratory), 0, 1023, 0, (maxPressure));
   // set baseline pressure, can only be opend until a certain point
-  baselinePos = map(analogRead(Expiratory), 0, 1023, 5, (maxPressure / 2 ));
+  baselinePos = map(analogRead(Expiratory), 0, 1023, 0, (maxPressure / 2 ));
 
 }
 void initBME() {
@@ -163,7 +186,45 @@ void initBME() {
   // whait a bit to ensure sensor startup
   delay(20);
 }
+void measureMaf() {// read the MAF sensor's measure and calcule the mean value over numreadingsMAF measures
+  // read the input on analog pin 0:
+  totalMAF = totalMAF - readingsMAF[readIndexMAF];
+  // read from the sensor:
+  readingsMAF[readIndexMAF] = analogRead(MAF);
+  // add the reading to the totalVenturiVenturi:
+  totalMAF = totalMAF + readingsMAF[readIndexMAF];
+  // advance to the next position in the array:
+  readIndexMAF = readIndexMAF + 1;
+
+  // if we're at the end of the array...
+  if (readIndexMAF >= numreadingsMAF) {
+    // ...wrap around to the beginning:
+    readIndexMAF = 0;
+  }
+
+  // calculate the average:
+  averageMAF = totalMAF / numreadingsMAF;
+  // send it to the computer as ASCII digits
+
+  delay(1);
+
+  measureVoltMAF = map(averageMAF, 0, 1023, 0, 5000);
+  measureVoltMAF = measureVoltMAF / 1000;
+  flowMeasure = -17.78956 - (17.11502 / 0.6834981) * (1 - exp(+0.6834981 * measureVoltMAF)) - 5;
+}
+void volumeMeasureValue() { // numerical integral of the flow to find volume value
+
+  currentTimeVol = millis();
+  if (expiration)
+    volumeMeasure = 0.;
+  timeIntervalVol = (double)(currentTimeVol - previousTimeVol);
+  volumeMeasure = volumeMeasure + flowMeasure * timeIntervalVol * (0.001 / 60);
+  previousTimeVol = currentTimeVol;     //remember current time
+}
+
 void updateSensors() {
+  measureMaf();
+  volumeMeasureValue();
   // reset timer first for regular intervals!
   bmpZero = millis();
 
@@ -199,22 +260,39 @@ void updateSensors() {
       digitalWrite(Buzzer, LOW);
     }
   }
+
+
   // This is a more userfriendly graph
   // Inspiratory -- Expiratory -- Pressure
   /////// Generates CSV files //////////
-  /*Serial.print(plateauPos); Serial.print(",");
-    Serial.print(baselinePos); Serial.print(",");
-    Serial.print(differentialP); Serial.print("  ");*/
+  // Serial.print(plateauPos); Serial.print(",");
+  //  Serial.print(baselinePos); Serial.print(",");
+  // Serial.print(differentialP); Serial.print(",");
+  // Serial.print(pos); Serial.print(",");
+  //  Serial.print("differentialP: "); Serial.print(differentialP); Serial.print("  ");
+
+  // Serial.print("MAFvolt: "); Serial.print(measureVoltMAF); Serial.print("  ");
+  //  Serial.print("MAFbrut: "); Serial.print(analogRead(MAF)); Serial.print("  ");
+
+
 
   // Normal dispaying mode
   Serial.print("Inspiratory: "); Serial.print(plateauPos); Serial.print("  ");
   Serial.print("Expiratory: "); Serial.print(baselinePos); Serial.print("  ");
-  Serial.print("differentialP "); Serial.print(differentialP); Serial.print("  ");
-    Serial.print("peak "); Serial.print(peak); Serial.print("  ");
+  Serial.print("differentialP: "); Serial.print(differentialP); Serial.print("  ");
+ // Serial.print("average: "); Serial.print((averageMAF)); Serial.print("  ");
+  Serial.print("flow: "); Serial.print(flowMeasure ); Serial.print("  ");
+  Serial.print("volume: "); Serial.print(volumeMeasure ); Serial.print("  ");
+
 
   Serial.println();
-}
 
+}
+void delayMs(int time_) {
+  int pres = millis();
+  while (millis() - pres < time_);
+
+}
 void startupTare() {
   // close input valve and open outputvalve, reset sensorTare
   ivPos = 0;
@@ -253,25 +331,45 @@ void updateData() {
   readPot();       // Reads the configuration of the potentiometers
 
   if (inspiration) {// if the lung is in inspiration phase
-    init_PIDParameters(0.1, 0.0 , 0);
+    init_PIDParameters(1.9, 1.5 , 0.01);
     // PIDs command is efficient for every setPoint in a specific servo opening angle range
     //
-    ovPos = computePID(differentialP, plateauPos  , 0, (peak - error) ); //31 is the best max angle to reach maximum inspiration pressure
+    ovPos = computePID(differentialP, plateauPos  , 0, 40); //31 is the best max angle to reach maximum inspiration pressure
     // -error allow us to regulate de range of the PID command using a simple proportional
-    outputValve.write((peak - error) - ovPos);
-    inputValve.write( ovPos + (error));
-    airSourceInputValve.write((peak - error) - ovPos);
+    outputValve.write(40   - ovPos);
+    inputValve.write( ovPos  );
+    airSourceInputValve.write(40 - ovPos);
 
   }
   else if (expiration) {// if the lung is in expiration phase
-    init_PIDParameters(0.5, 0.21 , 0);
-    ovPos = computePID(differentialP, baselinePos   , 0, (38 - error));  //44 is the best max angle to reach minimum inspiration pressure
+    init_PIDParameters(5, 7.856, 0.01);
+    ovPos = computePID(differentialP, baselinePos   , 0, 40);  //44 is the best max angle to reach minimum inspiration pressure
     // -error allow us to regulate de range of the PID command using a simple proportional
-    outputValve.write((38 - error) - ovPos);
-    inputValve.write(error + ovPos);
-    airSourceInputValve.write((38 - error) - ovPos);
+    outputValve.write(40  - ovPos);
+    inputValve.write( ovPos);
+    airSourceInputValve.write(40 - ovPos);
 
   }
+  /* if (inspiration) {// if the lung is in inspiration phase
+     init_PIDParameters(3,  0.001, 0);
+     // PIDs command is efficient for every setPoint in a specific servo opening angle range
+     //
+     ovPos = computePID(differentialP, plateauPos  , 0, (29 - error) ); //31 is the best max angle to reach maximum inspiration pressure
+     // -error allow us to regulate de range of the PID command using a simple proportional
+     outputValve.write((23 - error) - ovPos);
+     inputValve.write( ovPos + (error));
+     airSourceInputValve.write((29 - error) - ovPos);
+
+    }
+    else if (expiration) {// if the lung is in expiration phase
+     init_PIDParameters(2, 0.21 , 0);
+     ovPos = computePID(differentialP, baselinePos   , 0, (38 - error));  //44 is the best max angle to reach minimum inspiration pressure
+     // -error allow us to regulate de range of the PID command using a simple proportional
+     outputValve.write((38 - error) - ovPos);
+     inputValve.write(error + ovPos);
+     airSourceInputValve.write((38 - error) - ovPos);
+
+    }*/
 
 }
 //Initialize parameters
@@ -286,17 +384,18 @@ double computePID(double input_, double setPoint, double outMin, double outMax) 
   timeInterval = (double)(currentTime - previousTime);        //time interval
 
   error = setPoint - input_;                                  // compute proportional
-  I += error * timeInterval;                                  // compute integral
+  I += error * timeInterval * 0.001;                                // compute integral
   if (I >= outMax ) I = outMax;                               // condition to limitate the integrals output
   else if (I <= outMin) I = outMin;
-  D = (error - lastError) / timeInterval;                     // compute derivative
+  D = (error - lastError) / (timeInterval * 0.001);                   // compute derivative
   output_ = (kp * error + ki * I + kd * D);                   //PID output
   lastError = error;                                          //remember current error
   previousTime = currentTime;                                 //remember current time
   output_ = map(output_ , -100, 100 , outMin, outMax );
+  if (output_ >= outMax ) output_ = outMax;                               // condition to limitate the integrals output
+  else if (output_ <= outMin) output_ = outMin;
   return output_;                                             //have function return the PID output
 }
-
 
 
 void setup() {
@@ -322,8 +421,8 @@ void setup() {
   Timer1.attachInterrupt(updateData);
   //init servos to release all the pressure
   inputValve.write(90);
-  outputValve.write(0);
-  airSourceInputValve.write(0);
+  outputValve.write(90);
+  airSourceInputValve.write(90);
 
 
 
@@ -331,20 +430,22 @@ void setup() {
 
 
 void loop() {
-  int time_ = millis();
-  while (millis() - time_ <= cycle * (1 - ratio)) {// loop that maintain inspiration time in cycle
-    expiration = false;
-    inspiration = true;
-  }
-  D=0;I = 0; // integral reinistialization so it doesnt affect the expiration PID
-  time_ = millis();
-  while (millis() - time_ <= cycle * (  ratio)) {// loop that maintain expiration time in cycle
-    expiration = true;
-    inspiration = false;
-
-  }
-  D=0; I = 0; // integral reinistialization so it doesnt affect the inspitation PID
 
 
+     int time_ = millis();
+      while (millis() - time_ <= cycle * (1 - ratio)) {// loop that maintain inspiration time in cycle
+       expiration = false;
+       inspiration = true;
+      }
+      D=0;I = 0; // integral reinistialization so it doesnt affect the expiration PID
+      time_ = millis();
+      while (millis() - time_ <= cycle * (  ratio)) {// loop that maintain expiration time in cycle
+       expiration = true;
+       inspiration = false;
+
+      }
+      D=0; I = 0; // integral reinistialization so it doesnt affect the inspitation PID
+
+  
 
 }

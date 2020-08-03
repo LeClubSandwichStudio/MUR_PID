@@ -9,9 +9,9 @@
   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   See the License for the specific language governing permissions and
   limitations under the License.
-***************************************************************************/
+******************************************************************************/
 
-/***************************************************************************
+/*****************************************************************************
   !!!                        DISCLAMER                                 !!!
   ALARMS ARE NOT JET WORKING PROPERLY DUE TO TWO REASONS :
   - BME280 library is blocking the loop if the sensor fails
@@ -19,7 +19,35 @@
   BUT :
   It beeps when you exceed peakAlarmLevel and plateauAlarmlevel
   This provides a minimum of over pressure protection...
-***************************************************************************/
+******************************************************************************/
+
+
+
+
+/**************************    CODE    ***************************************
+       this is a classic code that uses two different PID parameters
+       for inspiration and for expiration.
+
+ **************************  NEXT STEP  **************************************
+       find a way to implement variable PID parameters to get the best
+       fit to the set point (SP)
+
+ *****************************************************************************/
+/* **********************   TUNING TUTORIAL   ********************************
+    1) set all potentiometers to 0
+    2) increase the Kp until you reach the limit of stability
+    3) if the PID response can't reach the setpoint increase gradualy Ki
+       value until you see that the system is able to reach SP
+    4) sometimes the derivative effect is too strong and makes the system
+       instable, if it is the case try to refine the mapping and try smaller
+       values (when fine tuned it increase stability)
+    NB : if you have parameters that follows the setpoint well try manually
+    to variate the pressure and see if it stabilizes quickly or it starts
+    to oscillate. if you're in the seccond case your system is instable
+    and you need to slightly decrease Kp value (try to keep it high enough
+    because it helps the system to have a quick response)
+*****************************************************************************/
+
 
 #include <Servo.h>
 #include <Wire.h>
@@ -54,16 +82,11 @@ BME280 bmeAmbient;
 
 
 //  Please adapt these three values to your Servos and Airsource. We use Futaba S3003 Servos.
-int maxPressure = 40;
+int maxPressure = 40, minPressure=5;
+
 // treshold values are arbitary set after consulting wikipedia. minimum 600hpa, maximum 1200hpa
 float minimumAtmosphericPressure = 600.;
 float maximumAtmosphericPressure = 1200.;
-// Ring Alarm if differential Pressure goes above that////////////NOT USED IN THIS CODE////////////
-float peakAlarmLevel = 40.;
-float plateauAlarmLevel = 30.;
-float maximumPressure = 1.;
-bool peakAlarm = 0;
-bool plateauAlarm = 0;
 
 // different timers in our breathing cycle
 unsigned long peakTimer = 0;
@@ -88,8 +111,9 @@ int ovPos = 90;
 int pvPos = 0;
 
 // position read on potentiometers
-int plateauPos = 0;
-int baselinePos = 0;
+double peak = 0 ;
+double plateauPos = 0;
+double baselinePos = 0;
 double cycle = 0;
 double ratio = 0 ;
 
@@ -107,27 +131,23 @@ double kp = 0 , ki = 0 , kd = 0 ;
 double error = 0, I = 0, D = 0;
 double lastError = 0;
 
-//time conting variables
+//time counting variables
 unsigned long currentTime = 0, previousTime = 0;
 double timeInterval = 0;  // currentTime-previousTime
-int peak = 0 ;
 
 void readPot() {
-  // Read peaks potentiometer value //////NOT USED IN THIS CODE//////
-  int tempI = analogRead(Peak);
-  peak = map(tempI, 0, 1023, 20, 50);
 
+  peak = map(analogRead(Peak), 0, 1023, 20, 50);
   // Calculate total breath cycle length
   cycle = map(analogRead(Cycles), 0, 1023, 6000, 2000);
   // Calculate the time of the inspiration cycle including peak + inspiratory
   ratio = map(analogRead(Ratio), 0, 1023, 0, 1000);
   ratio = ratio / 1000;
 
-
   // set inspiratory pressure, can only be opend until a certain point
-  plateauPos = map(analogRead(Inspiratory), 0, 1023, 0, (maxPressure));
+  plateauPos = map(analogRead(Inspiratory), 0, 1023, maxPressure / 2 , (maxPressure));
   // set baseline pressure, can only be opend until a certain point
-  baselinePos = map(analogRead(Expiratory), 0, 1023, 5, (maxPressure / 2 ));
+  baselinePos = map(analogRead(Expiratory), 0, 1023, minPressure, (maxPressure / 2 ));
 
 }
 void initBME() {
@@ -202,17 +222,20 @@ void updateSensors() {
   // This is a more userfriendly graph
   // Inspiratory -- Expiratory -- Pressure
   /////// Generates CSV files //////////
-  /*Serial.print(plateauPos); Serial.print(",");
-    Serial.print(baselinePos); Serial.print(",");
-    Serial.print(differentialP); Serial.print("  ");*/
+  Serial.print(plateauPos); Serial.print(",");
+  Serial.print(baselinePos); Serial.print(",");
+  Serial.print(differentialP); Serial.print("  ");
 
-  // Normal dispaying mode
-  Serial.print("Inspiratory: "); Serial.print(plateauPos); Serial.print("  ");
-  Serial.print("Expiratory: "); Serial.print(baselinePos); Serial.print("  ");
-  Serial.print("differentialP "); Serial.print(differentialP); Serial.print("  ");
+  /* // Normal dispaying mode
+    Serial.print("Inspiratory: "); Serial.print(plateauPos); Serial.print("  ");
+    Serial.print("Expiratory: "); Serial.print(baselinePos); Serial.print("  ");
+    Serial.print("differentialP "); Serial.print(differentialP); Serial.print("  ");
     Serial.print("peak "); Serial.print(peak); Serial.print("  ");
+    Serial.print("cycle "); Serial.print(cycle); Serial.print("  ");
 
+  */
   Serial.println();
+
 }
 
 void startupTare() {
@@ -253,25 +276,45 @@ void updateData() {
   readPot();       // Reads the configuration of the potentiometers
 
   if (inspiration) {// if the lung is in inspiration phase
-    init_PIDParameters(3, 0.001 , 0);
+    init_PIDParameters(1.9, 1.5 , 0.01);
     // PIDs command is efficient for every setPoint in a specific servo opening angle range
     //
-    ovPos = computePID(differentialP, plateauPos  , 0, (27 - error) ); //31 is the best max angle to reach maximum inspiration pressure
+    ovPos = computePID(differentialP, plateauPos  , 0, 40); //31 is the best max angle to reach maximum inspiration pressure
     // -error allow us to regulate de range of the PID command using a simple proportional
-    outputValve.write((27 - error) - ovPos);
-    inputValve.write( ovPos + (error));
-    airSourceInputValve.write((27 - error) - ovPos);
+    outputValve.write(40  - ovPos);
+    inputValve.write( ovPos  );
+    airSourceInputValve.write(40 - ovPos);
 
   }
   else if (expiration) {// if the lung is in expiration phase
-    init_PIDParameters(2, 0.21 , 0);
-    ovPos = computePID(differentialP, baselinePos   , 0, (38 - error));  //44 is the best max angle to reach minimum inspiration pressure
+    init_PIDParameters(5, 7.856, 0.01);
+    ovPos = computePID(differentialP, baselinePos   , 0, 40);  //44 is the best max angle to reach minimum inspiration pressure
     // -error allow us to regulate de range of the PID command using a simple proportional
-    outputValve.write((38 - error) - ovPos);
-    inputValve.write(error + ovPos);
-    airSourceInputValve.write((38 - error) - ovPos);
+    outputValve.write(40  - ovPos);
+    inputValve.write( ovPos);
+    airSourceInputValve.write(40 - ovPos);
 
   }
+  /* if (inspiration) {// if the lung is in inspiration phase
+     init_PIDParameters(3,  0.001, 0);
+     // PIDs command is efficient for every setPoint in a specific servo opening angle range
+     //
+     ovPos = computePID(differentialP, plateauPos  , 0, (29 - error) ); //31 is the best max angle to reach maximum inspiration pressure
+     // -error allow us to regulate de range of the PID command using a simple proportional
+     outputValve.write((23 - error) - ovPos);
+     inputValve.write( ovPos + (error));
+     airSourceInputValve.write((29 - error) - ovPos);
+
+    }
+    else if (expiration) {// if the lung is in expiration phase
+     init_PIDParameters(2, 0.21 , 0);
+     ovPos = computePID(differentialP, baselinePos   , 0, (38 - error));  //44 is the best max angle to reach minimum inspiration pressure
+     // -error allow us to regulate de range of the PID command using a simple proportional
+     outputValve.write((38 - error) - ovPos);
+     inputValve.write(error + ovPos);
+     airSourceInputValve.write((38 - error) - ovPos);
+
+    }*/
 
 }
 //Initialize parameters
@@ -286,14 +329,16 @@ double computePID(double input_, double setPoint, double outMin, double outMax) 
   timeInterval = (double)(currentTime - previousTime);        //time interval
 
   error = setPoint - input_;                                  // compute proportional
-  I += error * timeInterval;                                  // compute integral
+  I += error * timeInterval * 0.001;                                // compute integral
   if (I >= outMax ) I = outMax;                               // condition to limitate the integrals output
   else if (I <= outMin) I = outMin;
-  D = (error - lastError) / timeInterval;                     // compute derivative
+  D = (error - lastError) / (timeInterval * 0.001);                   // compute derivative
   output_ = (kp * error + ki * I + kd * D);                   //PID output
   lastError = error;                                          //remember current error
   previousTime = currentTime;                                 //remember current time
   output_ = map(output_ , -100, 100 , outMin, outMax );
+  if (output_ >= outMax ) output_ = outMax;                               // condition to limitate the integrals output
+  else if (output_ <= outMin) output_ = outMin;
   return output_;                                             //have function return the PID output
 }
 
@@ -322,8 +367,8 @@ void setup() {
   Timer1.attachInterrupt(updateData);
   //init servos to release all the pressure
   inputValve.write(90);
-  outputValve.write(0);
-  airSourceInputValve.write(0);
+  outputValve.write(90);
+  airSourceInputValve.write(90);
 
 
 
@@ -336,14 +381,14 @@ void loop() {
     expiration = false;
     inspiration = true;
   }
-  D=0;I = 0; // integral reinistialization so it doesnt affect the expiration PID
+  D = 0; I = 0; // integral reinistialization so it doesnt affect the expiration PID
   time_ = millis();
   while (millis() - time_ <= cycle * (  ratio)) {// loop that maintain expiration time in cycle
     expiration = true;
     inspiration = false;
 
   }
-  D=0; I = 0; // integral reinistialization so it doesnt affect the inspitation PID
+  D = 0; I = 0; // integral reinistialization so it doesnt affect the inspitation PID
 
 
 
