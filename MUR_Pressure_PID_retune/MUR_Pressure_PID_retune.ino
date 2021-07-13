@@ -62,9 +62,9 @@ BME280 bmePatient;
 BME280 bmeAmbient;
 
 // Potentiometer and Servo pins
-#define InputValvePin  2             // Pin for input Valve
-#define OutputValvePin  3            // Pin for Output Valve
-#define AirSourceInputValvePin  4    // Pin for Output Valve
+#define InputValvePin  22            // Pin for input Valve
+#define OutputValvePin  23           // Pin for Output Valve
+#define AirSourceInputValvePin  9    // Pin for Output Valve
 
 #define   LED 5            // future neopixel Led for user feedback
 #define Buzzer   6         // Alarm Buzzer
@@ -72,6 +72,11 @@ BME280 bmeAmbient;
 #define PressureCal   8    // Closes outputValve and opens Input Valve for maximum pressure calibration
 
 // Analog inputs for potentiometers
+#define MUX_A   0
+#define MUX_B   1
+#define MUX_C   2
+#define PIN_SIG A11
+
 #define Cycles   A0
 #define Ratio   A1
 #define Inspiratory   A7
@@ -138,26 +143,80 @@ double lastError = 0;
 //time conting variables
 unsigned long currentTime = 0, previousTime = 0;
 double timeInterval = 0;  // currentTime-previousTime
+
+int readMux(int sel) {
+  switch (sel) {
+    case 0:
+      digitalWriteFast(MUX_A, LOW);
+      digitalWriteFast(MUX_B, HIGH);
+      digitalWriteFast(MUX_C, LOW);
+      return analogRead(PIN_SIG);
+      break;
+    case 1:
+      digitalWriteFast(MUX_A, HIGH);
+      digitalWriteFast(MUX_B, LOW);
+      digitalWriteFast(MUX_C, LOW);
+      return analogRead(PIN_SIG);
+      break;
+    case 2:
+      digitalWriteFast(MUX_A, LOW);
+      digitalWriteFast(MUX_B, LOW);
+      digitalWriteFast(MUX_C, LOW);
+      return analogRead(PIN_SIG);
+      break;
+    case 3:
+      digitalWriteFast(MUX_A, HIGH);
+      digitalWriteFast(MUX_B, HIGH);
+      digitalWriteFast(MUX_C, LOW);
+      return analogRead(PIN_SIG);
+      break;
+    case 4:
+      digitalWriteFast(MUX_A, LOW);
+      digitalWriteFast(MUX_B, LOW);
+      digitalWriteFast(MUX_C, HIGH);
+      return analogRead(PIN_SIG);
+      break;
+    case 5:
+      digitalWriteFast(MUX_A, HIGH);
+      digitalWriteFast(MUX_B, LOW);
+      digitalWriteFast(MUX_C, HIGH);
+      return analogRead(PIN_SIG);
+      break;
+    case 6:
+      digitalWriteFast(MUX_A, LOW);
+      digitalWriteFast(MUX_B, HIGH);
+      digitalWriteFast(MUX_C, HIGH);
+      return analogRead(PIN_SIG);
+      break;
+    case 7:
+      digitalWriteFast(MUX_A, HIGH);
+      digitalWriteFast(MUX_B, HIGH);
+      digitalWriteFast(MUX_C, HIGH);
+      return analogRead(PIN_SIG);
+      break;
+  }
+}
+
 void readPot() {
   // Read peaks potentiometer value //////NOT USED IN THIS CODE//////
 
   // Calculate total breath cycle length
-  cycle = map(analogRead(Cycles), 0, 1023, 0, 20000);
+  cycle = map(readMux(0), 0, 1023, 0, 20000);   //analogRead(Cycles)
   cycle = cycle / 1000;
   // Calculate the time of the inspiration cycle including peak + inspiratory
-  ratio = map(analogRead(Ratio), 0, 1023, 0, 10000);
+  ratio = map(readMux(1), 0, 1023, 0, 10000);   //analogRead(Ratio)
   ratio = ratio / 1000;
   // Read peaks potentiometer value //////NOT USED IN THIS CODE//////
-  peak = map(analogRead(Peak), 0, 1023, 0, 2000);
+  peak = map(readMux(4), 0, 1023, 0, 2000);   //analogRead(Peak)
   peak = peak / 1000;
 
   // set inspiratory pressure, can only be opend until a certain point
-  plateauPos = map(analogRead(Inspiratory), 0, 1023, maxPressure / 2, (maxPressure));
+  plateauPos = map(readMux(2), 0, 1023, maxPressure / 2, (maxPressure));    //analogRead(Inspiratory)
   // set baseline pressure, can only be opend until a certain point
-  baselinePos = map(analogRead(Expiratory), 0, 1023, 5, maxPressure / 2 );
+  baselinePos = map(readMux(3), 0, 1023, 5, maxPressure / 2 );    //analogRead(Expiratory)
 }
 void initBME() {
-  bmePatient.setI2CAddress(0x77);
+  bmePatient.setI2CAddress(0x76);
   if (!bmePatient.isMeasuring()) {
     // Serial.println("Patient side Sensor HS !");
     if (bmePatient.beginI2C() == false) {
@@ -172,7 +231,7 @@ void initBME() {
     bmePatient.setMode(MODE_NORMAL);
   }
 
-  bmeAmbient.setI2CAddress(0x76);
+  bmeAmbient.setI2CAddress(0x77);
   if (!bmeAmbient.isMeasuring()) {
     //  Serial.println("Ambient side Sensor HS !");
     if (bmeAmbient.beginI2C() == false) {
@@ -189,6 +248,7 @@ void initBME() {
   // whait a bit to ensure sensor startup
   delay(20);
 }
+
 void updateSensors() {
   // reset timer first for regular intervals!
   bmpZero = millis();

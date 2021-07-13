@@ -64,9 +64,9 @@ BME280 bmePatient;
 BME280 bmeAmbient;
 
 // Potentiometer and Servo pins
-#define InputValvePin  2             // Pin for input Valve
-#define OutputValvePin  3            // Pin for Output Valve
-#define AirSourceInputValvePin  4    // Pin for Output Valve
+#define InputValvePin  22            // Pin for input Valve
+#define OutputValvePin  23           // Pin for Output Valve
+#define AirSourceInputValvePin  9    // Pin for Output Valve
 
 #define   LED 5            // future neopixel Led for user feedback
 #define Buzzer   6         // Alarm Buzzer
@@ -74,6 +74,11 @@ BME280 bmeAmbient;
 #define PressureCal   8    // Closes outputValve and opens Input Valve for maximum pressure calibration
 
 // Analog inputs for potentiometers
+#define MUX_A   0
+#define MUX_B   1
+#define MUX_C   2
+#define PIN_SIG A11
+
 #define Cycles   A0
 #define Ratio   A1
 #define Inspiratory   A7
@@ -82,7 +87,7 @@ BME280 bmeAmbient;
 
 
 //  Please adapt these three values to your Servos and Airsource. We use Futaba S3003 Servos.
-int maxPressure = 40, minPressure=5;
+int maxPressure = 40, minPressure = 5;
 
 // treshold values are arbitary set after consulting wikipedia. minimum 600hpa, maximum 1200hpa
 float minimumAtmosphericPressure = 600.;
@@ -135,23 +140,75 @@ double lastError = 0;
 unsigned long currentTime = 0, previousTime = 0;
 double timeInterval = 0;  // currentTime-previousTime
 
+int readMux(int sel) {
+  switch (sel) {
+    case 0:
+      digitalWriteFast(MUX_A, LOW);
+      digitalWriteFast(MUX_B, HIGH);
+      digitalWriteFast(MUX_C, LOW);
+      return analogRead(PIN_SIG);
+      break;
+    case 1:
+      digitalWriteFast(MUX_A, HIGH);
+      digitalWriteFast(MUX_B, LOW);
+      digitalWriteFast(MUX_C, LOW);
+      return analogRead(PIN_SIG);
+      break;
+    case 2:
+      digitalWriteFast(MUX_A, LOW);
+      digitalWriteFast(MUX_B, LOW);
+      digitalWriteFast(MUX_C, LOW);
+      return analogRead(PIN_SIG);
+      break;
+    case 3:
+      digitalWriteFast(MUX_A, HIGH);
+      digitalWriteFast(MUX_B, HIGH);
+      digitalWriteFast(MUX_C, LOW);
+      return analogRead(PIN_SIG);
+      break;
+    case 4:
+      digitalWriteFast(MUX_A, LOW);
+      digitalWriteFast(MUX_B, LOW);
+      digitalWriteFast(MUX_C, HIGH);
+      return analogRead(PIN_SIG);
+      break;
+    case 5:
+      digitalWriteFast(MUX_A, HIGH);
+      digitalWriteFast(MUX_B, LOW);
+      digitalWriteFast(MUX_C, HIGH);
+      return analogRead(PIN_SIG);
+      break;
+    case 6:
+      digitalWriteFast(MUX_A, LOW);
+      digitalWriteFast(MUX_B, HIGH);
+      digitalWriteFast(MUX_C, HIGH);
+      return analogRead(PIN_SIG);
+      break;
+    case 7:
+      digitalWriteFast(MUX_A, HIGH);
+      digitalWriteFast(MUX_B, HIGH);
+      digitalWriteFast(MUX_C, HIGH);
+      return analogRead(PIN_SIG);
+      break;
+  }
+}
 void readPot() {
 
-  peak = map(analogRead(Peak), 0, 1023, 20, 50);
+  peak = map(readMux(4), 0, 1023, 20, 50);        //analogRead(Peak)
   // Calculate total breath cycle length
-  cycle = map(analogRead(Cycles), 0, 1023, 6000, 2000);
+  cycle = map(readMux(0), 0, 1023, 6000, 2000);   //analogRead(Cycles)
   // Calculate the time of the inspiration cycle including peak + inspiratory
-  ratio = map(analogRead(Ratio), 0, 1023, 0, 1000);
+  ratio = map(readMux(1), 0, 1023, 0, 1000);      //analogRead(Ratio)
   ratio = ratio / 1000;
 
   // set inspiratory pressure, can only be opend until a certain point
-  plateauPos = map(analogRead(Inspiratory), 0, 1023, maxPressure / 2 , (maxPressure));
+  plateauPos = map(readMux(2), 0, 1023, maxPressure / 2 , (maxPressure));     //analogRead(Inspiratory)
   // set baseline pressure, can only be opend until a certain point
-  baselinePos = map(analogRead(Expiratory), 0, 1023, minPressure, (maxPressure / 2 ));
+  baselinePos = map(readMux(3), 0, 1023, minPressure, (maxPressure / 2 ));              //analogRead(Expiratory)
 
 }
 void initBME() {
-  bmePatient.setI2CAddress(0x77);
+  bmePatient.setI2CAddress(0x76);
   if (!bmePatient.isMeasuring()) {
     // Serial.println("Patient side Sensor HS !");
     if (bmePatient.beginI2C() == false) {
@@ -166,7 +223,7 @@ void initBME() {
     bmePatient.setMode(MODE_NORMAL);
   }
 
-  bmeAmbient.setI2CAddress(0x76);
+  bmeAmbient.setI2CAddress(0x77);
   if (!bmeAmbient.isMeasuring()) {
     //  Serial.println("Ambient side Sensor HS !");
     if (bmeAmbient.beginI2C() == false) {
@@ -222,18 +279,18 @@ void updateSensors() {
   // This is a more userfriendly graph
   // Inspiratory -- Expiratory -- Pressure
   /////// Generates CSV files //////////
-  Serial.print(plateauPos); Serial.print(",");
+  /*Serial.print(plateauPos); Serial.print(",");
   Serial.print(baselinePos); Serial.print(",");
-  Serial.print(differentialP); Serial.print("  ");
+  Serial.print(differentialP); Serial.print("  ");*/
 
-  /* // Normal dispaying mode
+  // Normal dispaying mode
     Serial.print("Inspiratory: "); Serial.print(plateauPos); Serial.print("  ");
     Serial.print("Expiratory: "); Serial.print(baselinePos); Serial.print("  ");
     Serial.print("differentialP "); Serial.print(differentialP); Serial.print("  ");
     Serial.print("peak "); Serial.print(peak); Serial.print("  ");
-    Serial.print("cycle "); Serial.print(cycle); Serial.print("  ");
+    //Serial.print("cycle "); Serial.print(cycle); Serial.print("  ");
 
-  */
+  
   Serial.println();
 
 }
@@ -346,8 +403,8 @@ double computePID(double input_, double setPoint, double outMin, double outMax) 
 
 void setup() {
   // put your setup code here, to run once:
-  pinMode(Maintenance, INPUT_PULLUP);
-  pinMode(PressureCal, INPUT_PULLUP);
+  //pinMode(Maintenance, INPUT_PULLUP);
+  //pinMode(PressureCal, INPUT_PULLUP);
   pinMode(Buzzer, OUTPUT);
   digitalWrite(Buzzer, LOW);
 
@@ -376,7 +433,7 @@ void setup() {
 
 
 void loop() {
-  int time_ = millis();
+  /*int time_ = millis();
   while (millis() - time_ <= cycle * (1 - ratio)) {// loop that maintain inspiration time in cycle
     expiration = false;
     inspiration = true;
@@ -388,7 +445,7 @@ void loop() {
     inspiration = false;
 
   }
-  D = 0; I = 0; // integral reinistialization so it doesnt affect the inspitation PID
+  D = 0; I = 0; // integral reinistialization so it doesnt affect the inspitation PID*/
 
 
 
