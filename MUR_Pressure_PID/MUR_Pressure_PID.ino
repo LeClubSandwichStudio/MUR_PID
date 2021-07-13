@@ -109,6 +109,7 @@ bool expiration = false;
 bool pressureMaxCal = false;
 bool pressureCal = false;
 bool pressureSensorFailure = false;
+bool valveTare = false;
 
 // Servo positions and others
 int ivPos = 0;
@@ -146,48 +147,56 @@ int readMux(int sel) {
       digitalWriteFast(MUX_A, LOW);
       digitalWriteFast(MUX_B, HIGH);
       digitalWriteFast(MUX_C, LOW);
+      delay(1);
       return analogRead(PIN_SIG);
       break;
     case 1:
       digitalWriteFast(MUX_A, HIGH);
       digitalWriteFast(MUX_B, LOW);
       digitalWriteFast(MUX_C, LOW);
+      delay(1);
       return analogRead(PIN_SIG);
       break;
     case 2:
       digitalWriteFast(MUX_A, LOW);
       digitalWriteFast(MUX_B, LOW);
       digitalWriteFast(MUX_C, LOW);
+      delay(1);
       return analogRead(PIN_SIG);
       break;
     case 3:
       digitalWriteFast(MUX_A, HIGH);
       digitalWriteFast(MUX_B, HIGH);
       digitalWriteFast(MUX_C, LOW);
+      delay(1);
       return analogRead(PIN_SIG);
       break;
     case 4:
       digitalWriteFast(MUX_A, LOW);
       digitalWriteFast(MUX_B, LOW);
       digitalWriteFast(MUX_C, HIGH);
+      delay(1);
       return analogRead(PIN_SIG);
       break;
     case 5:
       digitalWriteFast(MUX_A, HIGH);
       digitalWriteFast(MUX_B, LOW);
       digitalWriteFast(MUX_C, HIGH);
+      delay(1);
       return analogRead(PIN_SIG);
       break;
     case 6:
       digitalWriteFast(MUX_A, LOW);
       digitalWriteFast(MUX_B, HIGH);
       digitalWriteFast(MUX_C, HIGH);
+      delay(1);
       return analogRead(PIN_SIG);
       break;
     case 7:
       digitalWriteFast(MUX_A, HIGH);
       digitalWriteFast(MUX_B, HIGH);
       digitalWriteFast(MUX_C, HIGH);
+      delay(1);
       return analogRead(PIN_SIG);
       break;
   }
@@ -205,7 +214,19 @@ void readPot() {
   plateauPos = map(readMux(2), 0, 1023, maxPressure / 2 , (maxPressure));     //analogRead(Inspiratory)
   // set baseline pressure, can only be opend until a certain point
   baselinePos = map(readMux(3), 0, 1023, minPressure, (maxPressure / 2 ));              //analogRead(Expiratory)
-
+  if (readMux(7) <= 200) {
+    valveTare = 1;
+  } else {
+    valveTare = 0;
+  }
+  /*Serial.print(readMux(0)); Serial.print("\t");
+  Serial.print(readMux(1)); Serial.print("\t");
+  Serial.print(readMux(2)); Serial.print("\t");
+  Serial.print(readMux(3)); Serial.print("\t");
+  Serial.print(readMux(4)); Serial.print("\t");
+  Serial.print(readMux(5)); Serial.print("\t");
+  Serial.print(readMux(6)); Serial.print("\t");
+  Serial.print(readMux(7)); Serial.println("\t");*/
 }
 void initBME() {
   bmePatient.setI2CAddress(0x76);
@@ -280,17 +301,17 @@ void updateSensors() {
   // Inspiratory -- Expiratory -- Pressure
   /////// Generates CSV files //////////
   /*Serial.print(plateauPos); Serial.print(",");
-  Serial.print(baselinePos); Serial.print(",");
-  Serial.print(differentialP); Serial.print("  ");*/
+    Serial.print(baselinePos); Serial.print(",");
+    Serial.print(differentialP); Serial.print("  ");*/
 
   // Normal dispaying mode
-    Serial.print("Inspiratory: "); Serial.print(plateauPos); Serial.print("  ");
-    Serial.print("Expiratory: "); Serial.print(baselinePos); Serial.print("  ");
-    Serial.print("differentialP "); Serial.print(differentialP); Serial.print("  ");
-    Serial.print("peak "); Serial.print(peak); Serial.print("  ");
-    //Serial.print("cycle "); Serial.print(cycle); Serial.print("  ");
+  Serial.print("Inspiratory: "); Serial.print(plateauPos); Serial.print("  ");
+  Serial.print("Expiratory: "); Serial.print(baselinePos); Serial.print("  ");
+  Serial.print("differentialP "); Serial.print(differentialP); Serial.print("  ");
+  Serial.print("peak "); Serial.print(peak); Serial.print("  ");
+  //Serial.print("cycle "); Serial.print(cycle); Serial.print("  ");
 
-  
+
   Serial.println();
 
 }
@@ -433,7 +454,7 @@ void setup() {
 
 
 void loop() {
-  /*int time_ = millis();
+  int time_ = millis();
   while (millis() - time_ <= cycle * (1 - ratio)) {// loop that maintain inspiration time in cycle
     expiration = false;
     inspiration = true;
@@ -443,10 +464,6 @@ void loop() {
   while (millis() - time_ <= cycle * (  ratio)) {// loop that maintain expiration time in cycle
     expiration = true;
     inspiration = false;
-
   }
-  D = 0; I = 0; // integral reinistialization so it doesnt affect the inspitation PID*/
-
-
-
+  D = 0; I = 0; // integral reinistialization so it doesnt affect the inspitation PID
 }
