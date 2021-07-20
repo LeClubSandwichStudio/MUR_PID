@@ -66,8 +66,7 @@ BME280 bmeAmbient;
 #define OutputValvePin  23           // Pin for Output Valve
 #define AirSourceInputValvePin  9    // Pin for Output Valve
 
-#define   LED 5            // future neopixel Led for user feedback
-#define Buzzer   6         // Alarm Buzzer
+#define Buzzer   5         // Alarm Buzzer
 #define Maintenance   7    // Sets all valves to 0° for maintenance
 #define PressureCal   8    // Closes outputValve and opens Input Valve for maximum pressure calibration
 
@@ -76,13 +75,6 @@ BME280 bmeAmbient;
 #define MUX_B   1
 #define MUX_C   2
 #define PIN_SIG A11
-
-#define Cycles   A0
-#define Ratio   A1
-#define Inspiratory   A7
-#define Expiratory   A8
-#define Peak  A6
-
 
 //  Please adapt these three values to your Servos and Airsource. We use Futaba S3003 Servos.
 int maxPressure = 40;
@@ -391,10 +383,9 @@ double computePID(double sensorMeasure, double setPoint, double outMin, double o
 
 void setup() {
   // put your setup code here, to run once:
-  pinMode(Maintenance, INPUT_PULLUP);
-  pinMode(PressureCal, INPUT_PULLUP);
-  pinMode(Buzzer, OUTPUT);
-  digitalWrite(Buzzer, LOW);
+  pinMode(MUX_A, OUTPUT);
+  pinMode(MUX_B, OUTPUT);
+  pinMode(MUX_C, OUTPUT);
 
   Serial.begin(115200);
   delay(100);

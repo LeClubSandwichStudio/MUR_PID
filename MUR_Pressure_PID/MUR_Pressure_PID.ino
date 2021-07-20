@@ -68,11 +68,6 @@ BME280 bmeAmbient;
 #define OutputValvePin  23           // Pin for Output Valve
 #define AirSourceInputValvePin  9    // Pin for Output Valve
 
-#define   LED 5            // future neopixel Led for user feedback
-#define Buzzer   6         // Alarm Buzzer
-#define Maintenance   7    // Sets all valves to 0° for maintenance
-#define PressureCal   8    // Closes outputValve and opens Input Valve for maximum pressure calibration
-
 // Analog inputs for potentiometers
 #define MUX_A   0
 #define MUX_B   1
@@ -424,10 +419,9 @@ double computePID(double input_, double setPoint, double outMin, double outMax) 
 
 void setup() {
   // put your setup code here, to run once:
-  //pinMode(Maintenance, INPUT_PULLUP);
-  //pinMode(PressureCal, INPUT_PULLUP);
-  pinMode(Buzzer, OUTPUT);
-  digitalWrite(Buzzer, LOW);
+  pinMode(MUX_A, OUTPUT);
+  pinMode(MUX_B, OUTPUT);
+  pinMode(MUX_C, OUTPUT);
 
   Serial.begin(115200);
   delay(100);
